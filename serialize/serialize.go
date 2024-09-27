@@ -1,28 +1,18 @@
 package serialize
 
+import "netmgr/schema"
+
 type NetConfigSerializer interface {
-	Serialize() ([]byte, error)
-	Deserialize([]byte) error
-	Bytes() []byte
-	String() string
+	Serialize(schema *schema.NetSchema) ([]byte, error)
+	Deserialize(data []byte) (*schema.NetSchema, error)
 }
 
-type BaseNetConfigSerializer struct {
-	NetConfigSerializer
-}
+type BaseNetConfigSerializer struct{}
 
-func (s *BaseNetConfigSerializer) Serialize() ([]byte, error) {
+func (s *BaseNetConfigSerializer) Serialize(schema *schema.NetSchema) ([]byte, error) {
 	panic("not implemented")
 }
 
-func (s *BaseNetConfigSerializer) Deserialize(data []byte) error {
-	panic("not implemented")
-}
-
-func (s *BaseNetConfigSerializer) Bytes() []byte {
-	panic("not implemented")
-}
-
-func (s *BaseNetConfigSerializer) String() string {
+func (s *BaseNetConfigSerializer) Deserialize(data []byte) (*schema.NetSchema, error) {
 	panic("not implemented")
 }
