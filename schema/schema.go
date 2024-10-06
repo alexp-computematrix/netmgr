@@ -1,76 +1,54 @@
 package schema
 
-import "net"
-
-const (
-	NetSchemaAddressIPv4 NetSchemaAddressProtocol = iota
-	NetSchemaAddressIPv6
+import (
+	"fmt"
+	"net"
 )
 
 // NetSchema ...
+// FIXME(alexp): Refactor schema for efficiency
 type NetSchema struct {
-	// Addresses ...
-	Addresses []NetSchemaAddress
 
 	// Interfaces ...
-	Interfaces []NetSchemaInterface
-
-	// Routes ...
-	Routes []NetSchemaRoute
+	Interfaces map[string]*NetSchemaInterface
 }
 
-// NetSchemaAddressProtocol ...
-type NetSchemaAddressProtocol int64
-
-// NetSchemaAddress ...
-type NetSchemaAddress struct {
-	// Protocol ...
-	Protocol NetSchemaAddressProtocol
-
-	// Host ...
-	Host net.IP
-
-	// Network ...
-	Network *net.IPNet
-
-	// Interface ...
-	Interface *net.Interface
+// AssociateInterface appends a new net.Interface to the schema
+// Interfaces property as NetSchemaInterface.
+func (s *NetSchema) AssociateInterface(i *net.Interface) (*NetSchemaInterface, error) {
+	nsi := NetSchemaInterfaceFromNetInterface(i)
+	s.Interfaces[i.Name] = nsi
+	return nsi, nil
 }
 
-// String ...
-func (nsa NetSchemaAddress) String() string {
-	return nsa.Host.String()
-}
+// AssociateInterfaceByName appends a new interface name string to the schema
+// Interfaces property as NetSchemaInterface.
+func (s *NetSchema) AssociateInterfaceByName(name string) (*NetSchemaInterface, error) {
+	nsi, err := NewNetSchemaInterfaceByName(name)
+	if err != nil {
+		return nil, err
+	}
 
-// GetProtocol ...
-func (nsa NetSchemaAddress) GetProtocol() NetSchemaAddressProtocol {
-	return nsa.Protocol
-}
+	s.Interfaces[nsi.i.Name] = nsi
 
-// GetHost ...
-func (nsa NetSchemaAddress) GetHost() net.IP {
-	return nsa.Host
-}
-
-// GetNetMask ...
-func (nsa NetSchemaAddress) GetNetMask() net.IPMask {
-	return nsa.Network.Mask
-}
-
-// GetNetwork ...
-func (nsa NetSchemaAddress) GetNetwork() *net.IPNet {
-	return nsa.Network
+	return nsi, nil
 }
 
 // GetInterface ...
-func (nsa NetSchemaAddress) GetInterface() *net.Interface {
-	return nsa.Interface
+func (s *NetSchema) GetInterface(name string) (*NetSchemaInterface, error) {
+	i, ok := s.Interfaces[name]
+	if !ok {
+		return nil, fmt.Errorf("interface %s not found", name)
+	}
+	return i, nil
 }
-
-// NetSchemaInterface ...
-// TODO(alexp)
-type NetSchemaInterface struct{}
 
 // NetSchemaRoute ...
 // TODO(alexp)
 type NetSchemaRoute struct{}
+
+// NewNetSchema ...
+func NewNetSchema() *NetSchema {
+	// TODO(alexp)
+	return &NetSchema{Interfaces: make(map[string]*NetSchemaInterface)}
+}

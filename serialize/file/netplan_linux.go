@@ -1,18 +1,41 @@
 package file
 
 import (
+	"fmt"
 	"gopkg.in/yaml.v3"
+	"log/slog"
 	"net"
+	"netmgr/netdev"
 	"netmgr/schema"
-	"netmgr/util"
 )
 
+type NetPlanRoute struct {
+	From                    string `yaml:"from,omitempty"`
+	To                      string `yaml:"to,omitempty"`
+	Via                     string `yaml:"via,omitempty"`
+	OnLink                  bool   `yaml:"on-link,omitempty"`
+	Metric                  int    `yaml:"metric,omitempty"`
+	Type                    string `yaml:"type,omitempty"`
+	Scope                   string `yaml:"scope,omitempty"`
+	Table                   int    `yaml:"table,omitempty"`
+	MTU                     int    `yaml:"mtu,omitempty"`
+	CongestionWindow        int    `yaml:"congestion-window,omitempty"`
+	AdvertisedReceiveWindow int    `yaml:"advertised-receive-window,omitempty"`
+	AdvertisedMSS           int    `yaml:"advertised-mss,omitempty"`
+}
+
+type NetPlanEthernetMatch struct {
+	Name       string `yaml:"name"`
+	MacAddress string `yaml:"macaddress"`
+	Driver     string `yaml:"driver"`
+}
+
 type NetPlanEthernet struct {
-	DHCP4       bool                `yaml:"dhcp4,omitempty"`
-	Addresses   []string            `yaml:"addresses,omitempty"`
-	Gateway4    string              `yaml:"gateway4,omitempty"`
-	Gateway6    string              `yaml:"gateway6,omitempty"`
-	Nameservers map[string][]string `yaml:"nameservers,omitempty"`
+	Match       NetPlanEthernetMatch `yaml:"match"`
+	DHCP4       bool                 `yaml:"dhcp4,omitempty"`
+	Addresses   []string             `yaml:"addresses,omitempty"`
+	Routes      []NetPlanRoute       `yaml:"routes,omitempty"`
+	Nameservers map[string][]string  `yaml:"nameservers,omitempty"`
 }
 
 type NetPlanEthernets map[string]NetPlanEthernet
@@ -41,50 +64,108 @@ func (y *NetPlanYAML) HasEthernet(eth string) bool {
 }
 
 type NetPlanSerializer struct {
-	NetConfigFileSerializer
-	yaml NetPlanYAML
+	yaml    *NetPlanYAML
+	matches map[string]string
+}
+
+func (s *NetPlanSerializer) HasMatch(eth string) bool {
+	_, ok := s.matches[eth]
+	return ok
 }
 
 func (s *NetPlanSerializer) Serialize(schema *schema.NetSchema) ([]byte, error) {
-	// TODO(alexp): finish implementation
+	// TODO(alexp): finish / fix this implementation
 
-	for _, addr := range schema.Addresses {
-		addrInterface := addr.Interface.Name
-
-		var eth NetPlanEthernet
-		if s.yaml.HasEthernet(addrInterface) {
-			eth = s.yaml.Network.Ethernets[addrInterface]
+	for _, nsi := range schema.Interfaces {
+		eth := nsi.Name()
+		if s.HasMatch(nsi.Name()) {
+			eth = s.matches[nsi.Name()]
 		}
-		eth.Addresses = append(eth.Addresses, addr.String())
+
+		// create address list
+		var ethAddrs []string
+		for _, addr := range nsi.Addresses {
+			ethAddrs = append(ethAddrs, addr.CIDRFormat())
+		}
+
+		// TODO(alexp): Implement cases for all supported interface types
+		switch {
+		case netdev.IsEthernet(nsi.Interface()):
+			if s.yaml.HasEthernet(eth) {
+				// TODO(alexp): set ethernet addresses from schema
+				ethConfig := s.yaml.Network.Ethernets[eth]
+				ethConfig.Addresses = ethAddrs
+				s.yaml.Network.Ethernets[eth] = ethConfig
+			} else {
+				s.yaml.Network.Ethernets[eth] = NetPlanEthernet{
+					Addresses: ethAddrs,
+				}
+			}
+		}
 	}
 
 	return yaml.Marshal(s.yaml)
 }
 
 func (s *NetPlanSerializer) Deserialize(data []byte) (*schema.NetSchema, error) {
-	// TODO(alexp): finish implementation
-
+	s.matches = make(map[string]string)
 	if err := yaml.Unmarshal(data, &s.yaml); err != nil {
 		return nil, err
 	}
 
-	netSchema := &schema.NetSchema{}
+	netSchema := schema.NewNetSchema()
 
 	for eth, ethConfig := range s.yaml.Network.Ethernets {
-		ethInterface, err := net.InterfaceByName(eth)
-		if err != nil {
-			return nil, err
-		}
 
-		for _, addr := range ethConfig.Addresses {
-			schemaIp, err := util.ConvertStringToNetSchemaAddress(addr)
+		nsi, err := netSchema.AssociateInterfaceByName(eth)
+		if err != nil {
+			var ethInterface *net.Interface
+			if ethInterface, err = InterfaceByNetPlanEthernetMatch(ethConfig.Match); err != nil {
+				return nil, err
+			}
+
+			nsi, err = netSchema.AssociateInterface(ethInterface)
 			if err != nil {
 				return nil, err
 			}
-			schemaIp.Interface = ethInterface
-			netSchema.Addresses = append(netSchema.Addresses, *schemaIp)
+
+			// Create interface match mapping
+			s.matches[ethInterface.Name] = eth
+		}
+
+		for _, addr := range ethConfig.Addresses {
+			var nsa schema.NetSchemaAddress
+			nsa, err = nsi.AssociateIPAddress(addr)
+			if err != nil {
+				return nil, err
+			}
+
+			slog.Info("Interface associated IP address",
+				slog.String("dev", nsi.Name()),
+				slog.String("addr", nsa.CIDRFormat()))
 		}
 	}
 
 	return netSchema, nil
+}
+
+func InterfaceByNetPlanEthernetMatch(match NetPlanEthernetMatch) (*net.Interface, error) {
+	ifaces, err := InterfacesByNetPlanEthernetMatch(match)
+	if err != nil {
+		return nil, err
+	}
+	if len(ifaces) > 1 {
+		return nil, fmt.Errorf("ambiguous interface match: %v", match)
+	}
+	return ifaces[0], nil
+}
+
+func InterfacesByNetPlanEthernetMatch(match NetPlanEthernetMatch) ([]*net.Interface, error) {
+	if ifaces, err := netdev.InterfacesByMatch(match.Name); err == nil {
+		return ifaces, nil
+	}
+	if iface, err := netdev.InterfaceByMAC(match.MacAddress); err == nil {
+		return []*net.Interface{iface}, nil
+	}
+	return netdev.InterfacesByDriver(match.Driver)
 }

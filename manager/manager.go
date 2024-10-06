@@ -1,21 +1,29 @@
 package manager
 
 import (
-	"errors"
-	"net"
 	"netmgr/schema"
 	"netmgr/serialize"
-	"strings"
+	"netmgr/serialize/file"
 )
 
 type INetworkManager interface {
-	Stop() error
-	Start() error
-	Restart() error
-	Commit() error
-	Rollback() error
-	SetDHCP() error
-	SetStatic() error
+
+	// ReadConfig ...
+	ReadConfig(path string) error
+
+	// WriteConfig ...
+	WriteConfig(path string) error
+
+	// SetIPv4Addresses ...
+	SetIPv4Addresses(ipv4 []string, dev string) error
+
+	// Stop() error
+	// Start() error
+	// Restart() error
+	// Commit() error
+	// Rollback() error
+	// SetDHCP() error
+	// SetStatic() error
 }
 
 type BaseNetworkManager struct {
@@ -23,45 +31,57 @@ type BaseNetworkManager struct {
 	Serializer serialize.NetConfigSerializer
 }
 
-func (n BaseNetworkManager) Stop() error {
-	panic("implement me")
-}
-
-func (n BaseNetworkManager) Start() error {
-	panic("implement me")
-}
-
-func (n BaseNetworkManager) Restart() error {
-	panic("implement me")
-}
-
-func (n BaseNetworkManager) Commit() error {
-	panic("implement me")
-}
-
-func (n BaseNetworkManager) Rollback() error {
-	panic("implement me")
-}
-
-func (n BaseNetworkManager) SetDHCP() error {
-	panic("implement me")
-}
-
-func (n BaseNetworkManager) SetStatic() error {
-	panic("implement me")
-}
-
-func GetNetworkInterfaceByPrefix(prefix string) (*net.Interface, error) {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return nil, err
+// ReadConfig ...
+func (n *BaseNetworkManager) ReadConfig(path string) error {
+	s, err := file.NetSchemaFromFile(path, n.Serializer)
+	if err == nil {
+		n.Schema = s
 	}
+	return err
+}
 
-	for _, iface := range ifaces {
-		if strings.HasPrefix(iface.Name, prefix) {
-			return &iface, nil
+func (n *BaseNetworkManager) WriteConfig(path string) error {
+	return file.NetSchemaToFile(path, n.Serializer, n.Schema)
+}
+
+func (n *BaseNetworkManager) SetIPv4Addresses(ipv4 []string, dev string) error {
+	iface, err := n.Schema.GetInterface(dev)
+	if err != nil {
+		return err
+	}
+	for _, ip := range ipv4 {
+		_, err = iface.AssociateIPAddress(ip)
+		if err != nil {
+			return err
 		}
 	}
+	return nil
+}
 
-	return nil, errors.New("no network interfaces found")
+func (n *BaseNetworkManager) Stop() error {
+	panic("implement me")
+}
+
+func (n *BaseNetworkManager) Start() error {
+	panic("implement me")
+}
+
+func (n *BaseNetworkManager) Restart() error {
+	panic("implement me")
+}
+
+func (n *BaseNetworkManager) Commit() error {
+	panic("implement me")
+}
+
+func (n *BaseNetworkManager) Rollback() error {
+	panic("implement me")
+}
+
+func (n *BaseNetworkManager) SetDHCP() error {
+	panic("implement me")
+}
+
+func (n *BaseNetworkManager) SetStatic() error {
+	panic("implement me")
 }

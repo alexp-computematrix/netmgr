@@ -1,6 +1,8 @@
 package serialize
 
-import "netmgr/schema"
+import (
+	"netmgr/schema"
+)
 
 type NetConfigSerializer interface {
 	Serialize(schema *schema.NetSchema) ([]byte, error)
